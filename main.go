@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	resp, err := http.Get("http://magpie.surge.sh/index.html") // doesn't work yet
+	resp, err := http.Get("http://magpie.surge.sh/index.html")
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}

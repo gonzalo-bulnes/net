@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	_url "net/url"
 	"strings"
 )
 
@@ -34,25 +35,40 @@ func Get(url string) (resp *Response, err error) {
 	}
 
 	// preliminary checks
-	u := strings.SplitN(url, "://", 2)
-	if len(u) != 2 {
-		err = fmt.Errorf("Malformed URL: %s", url)
+	u, err := _url.Parse(url)
+	if err != nil {
+		err = fmt.Errorf("Error parsin URL '%s': %v", url, err)
 		return
 	}
-	if protocol := u[0]; protocol != "http" {
-		err = fmt.Errorf("Unsupported protocol: %s", protocol)
+	if u.Scheme != "http" {
+		err = fmt.Errorf("Unsupported protocol: %s", u.Scheme)
 		return
+	}
+	address := u.Host
+	if !strings.Contains(address, ":") {
+		switch u.Scheme {
+		case "http":
+			address = fmt.Sprintf("%s%s", address, ":80")
+		}
+	}
+	path := "/"
+	if u.Path != "" {
+		path = u.Path
 	}
 
 	// establish a TCP connection
-	conn, err := net.Dial("tcp", u[1])
+	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		err = fmt.Errorf("Connection error: %w", err)
 		return
 	}
 
 	// write a request
-	fmt.Fprintf(conn, "GET / HTTP/1.0\r\n\r\n")
+	const requestTermination = "\r\n"
+	fmt.Fprintf(conn, fmt.Sprintf("GET %s HTTP/1.0\r\n", path))
+	// send a Host header for HTTP/1.1 servers that require it
+	// e.g. servers that serve multiple domains
+	fmt.Fprintf(conn, fmt.Sprintf("Host: %s\r\n%s", u.Hostname(), requestTermination))
 
 	r := bufio.NewReader(conn)
 
@@ -66,6 +82,8 @@ func Get(url string) (resp *Response, err error) {
 	// interpret the first line of the response
 	switch status {
 	case "HTTP/1.0 200 OK\r\n":
+		resp.StatusCode = 200
+	case "HTTP/1.1 200 OK\r\n":
 		resp.StatusCode = 200
 	default:
 		err = fmt.Errorf("Unknown status: %s", status)
