@@ -3,6 +3,7 @@ package http
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -40,27 +41,41 @@ func Get(url string) (resp *Response, err error) {
 		err = fmt.Errorf("Error parsin URL '%s': %v", url, err)
 		return
 	}
-	if u.Scheme != "http" {
+	address := u.Host
+
+	var conn net.Conn
+
+	switch u.Scheme {
+	case "http":
+		if !strings.Contains(address, ":") {
+			address = fmt.Sprintf("%s%s", address, ":80")
+		}
+		// establish a TCP connection
+		conn, err = net.Dial("tcp", address)
+		if err != nil {
+			err = fmt.Errorf("Connection error: %w", err)
+			return
+		}
+		break
+	case "https":
+		if !strings.Contains(address, ":") {
+			address = fmt.Sprintf("%s%s", address, ":443")
+		}
+		// establish a TCP connection with TLS
+		conn, err = tls.Dial("tcp", address, &tls.Config{})
+		if err != nil {
+			err = fmt.Errorf("Connection error: %w", err)
+			return
+		}
+	default:
 		err = fmt.Errorf("Unsupported protocol: %s", u.Scheme)
 		return
 	}
-	address := u.Host
-	if !strings.Contains(address, ":") {
-		switch u.Scheme {
-		case "http":
-			address = fmt.Sprintf("%s%s", address, ":80")
-		}
-	}
+	defer conn.Close()
+
 	path := "/"
 	if u.Path != "" {
 		path = u.Path
-	}
-
-	// establish a TCP connection
-	conn, err := net.Dial("tcp", address)
-	if err != nil {
-		err = fmt.Errorf("Connection error: %w", err)
-		return
 	}
 
 	// write a request
